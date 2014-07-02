@@ -96,10 +96,9 @@ public class Config extends HashMap<String, Object> {
      */
     public static final String STORM_NETTY_FLUSH_CHECK_INTERVAL_MS = "storm.messaging.netty.flush.check.interval.ms";
     public static final Object STORM_NETTY_FLUSH_CHECK_INTERVAL_MS_SCHEMA = Number.class;
-    
-    
+
     /**
-     * A list of hosts of ZooKeeper servers used to manage the cluster.
+     * A list of hosts of ZooKeeper (or Exhibitor) servers used to manage the cluster.
      */
     public static final String STORM_ZOOKEEPER_SERVERS = "storm.zookeeper.servers";
     public static final Object STORM_ZOOKEEPER_SERVERS_SCHEMA = ConfigValidation.StringsValidator;
@@ -109,6 +108,24 @@ public class Config extends HashMap<String, Object> {
      */
     public static final String STORM_ZOOKEEPER_PORT = "storm.zookeeper.port";
     public static final Object STORM_ZOOKEEPER_PORT_SCHEMA = Number.class;
+
+    /**
+     * A flag to use a exhibitor curator framework.
+     */
+    public static final String STORM_ZOOKEEPER_USE_EXHIBITOR = "storm.zookeeper.use.exhibitor";
+    public static final Object STORM_ZOOKEEPER_USE_EXHIBITOR_SCHEMA = Boolean.class;
+
+    /**
+     * The port Storm will use to connect to each of the Exhibitor servers.
+     */
+    public static final String STORM_ZOOKEEPER_EXHIBITOR_PORT = "storm.zookeeper.exhibitor.port";
+    public static final Object STORM_ZOOKEEPER_EXHIBITOR_PORT_SCHEMA = Number.class;
+
+    /**
+     * Interval for polling the Exhibitor ensamble for changes.
+     */
+    public static final String STORM_ZOOKEEPER_EXHIBITOR_POLL_INTERVAL = "storm.zookeeper.exhibitor.poll.interval";
+    public static final Object STORM_ZOOKEEPER_EXHIBITOR_POLL_INTERVAL_SCHEMA = Number.class;
 
     /**
      * A directory on the local filesystem used by Storm for any local

@@ -31,21 +31,19 @@ import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.WritableByteChannel;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Scanner;
-import java.util.TreeMap;
-import java.util.UUID;
+import java.util.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.curator.ensemble.exhibitor.DefaultExhibitorRestClient;
+import org.apache.curator.ensemble.exhibitor.ExhibitorEnsembleProvider;
+import org.apache.curator.ensemble.exhibitor.Exhibitors;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.commons.lang.StringUtils;
+import org.apache.curator.retry.RetryNTimes;
 import org.apache.thrift.TException;
 import org.json.simple.JSONValue;
 import org.yaml.snakeyaml.Yaml;
@@ -60,6 +58,7 @@ import clojure.lang.RT;
 
 public class Utils {
     public static final String DEFAULT_STREAM_ID = "default";
+    public static Logger LOG = LoggerFactory.getLogger(Utils.class);
 
     public static Object newInstance(String klass) {
         try {
@@ -371,19 +370,51 @@ public class Utils {
     }
 
     public static CuratorFramework newCurator(Map conf, List<String> servers, Object port, String root, ZookeeperAuthInfo auth) {
-        List<String> serverPorts = new ArrayList<String>();
+        final List<String> serverPorts = new ArrayList<String>();
         for(String zkServer: (List<String>) servers) {
             serverPorts.add(zkServer + ":" + Utils.getInt(port));
         }
-        String zkStr = StringUtils.join(serverPorts, ",") + root;
-        CuratorFrameworkFactory.Builder builder = CuratorFrameworkFactory.builder()
-                .connectString(zkStr)
-                .connectionTimeoutMs(Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_CONNECTION_TIMEOUT)))
-                .sessionTimeoutMs(Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_SESSION_TIMEOUT)))
-                .retryPolicy(new BoundedExponentialBackoffRetry(
-                            Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_INTERVAL)),
-                            Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_TIMES)),
-                            Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_INTERVAL_CEILING))));
+        final String zkStr = StringUtils.join(serverPorts, ",") + root;
+
+        CuratorFrameworkFactory.Builder builder;
+        if (Utils.getBoolean(conf.get(Config.STORM_ZOOKEEPER_USE_EXHIBITOR), false)) {
+          LOG.info("CuratorFramework builder with ExhibitorEnsemble");
+          ExhibitorEnsembleProvider ensembleProvider =
+                  new ExhibitorEnsembleProvider(
+                          new Exhibitors(
+                                  servers,
+                                  Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_EXHIBITOR_PORT)),
+                                  new Exhibitors.BackupConnectionStringProvider() {
+                                    public String getBackupConnectionString() {
+                                      return StringUtils.join(serverPorts, ",");
+                                    }
+                                  }),
+                          new DefaultExhibitorRestClient(),
+                          "/exhibitor/v1/cluster/list",
+                          Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_EXHIBITOR_POLL_INTERVAL)),
+                          new RetryNTimes(
+                                  Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_TIMES)),
+                                  Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_INTERVAL))));
+          builder = CuratorFrameworkFactory.builder()
+                  .ensembleProvider(ensembleProvider)
+                  .connectionTimeoutMs(Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_CONNECTION_TIMEOUT)))
+                  .sessionTimeoutMs(Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_SESSION_TIMEOUT)))
+                  .retryPolicy(new BoundedExponentialBackoffRetry(
+                          Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_INTERVAL)),
+                          Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_TIMES)),
+                          Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_INTERVAL_CEILING))));
+        }
+        else {
+          LOG.info("CuratorFramework builder with connectString; " + zkStr);
+          builder = CuratorFrameworkFactory.builder()
+                  .connectString(zkStr)
+                  .connectionTimeoutMs(Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_CONNECTION_TIMEOUT)))
+                  .sessionTimeoutMs(Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_SESSION_TIMEOUT)))
+                  .retryPolicy(new BoundedExponentialBackoffRetry(
+                          Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_INTERVAL)),
+                          Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_TIMES)),
+                          Utils.getInt(conf.get(Config.STORM_ZOOKEEPER_RETRY_INTERVAL_CEILING))));
+        }
         if(auth!=null && auth.scheme!=null) {
             builder = builder.authorization(auth.scheme, auth.payload);
         }
